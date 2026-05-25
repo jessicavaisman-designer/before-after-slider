@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+      background: #1e1e1e;
+      color: #fff;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 44px;
+      background: #2c2c2c;
+      border-bottom: 1px solid #3a3a3a;
+      flex-shrink: 0;
+    }
+    .toolbar.hidden { display: none; }
+
+    .mode-switcher {
+      display: flex;
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 3px;
+      gap: 2px;
+    }
+
+    .mode-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #555;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .mode-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .mode-btn:hover:not(.active) { color: #999; }
+    .mode-btn.active { background: #3a3a3a; color: #f0f0f0; }
+
+    /* ── States ── */
+    .state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 40px;
+      text-align: center;
+    }
+    .state.hidden { display: none; }
+    .state-icon { font-size: 36px; }
+    .state h2 { font-size: 15px; font-weight: 600; color: #e0e0e0; }
+    .state p { font-size: 13px; color: #888; line-height: 1.6; max-width: 320px; }
+    .state.error h2 { color: #f87b5a; }
+
+    .hint {
+      background: #2c2c2c;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 12px;
+      color: #aaa;
+      line-height: 1.7;
+      max-width: 340px;
+      text-align: left;
+    }
+    .hint strong { color: #ddd; }
+
+    /* ── Outer view wrapper ── */
+    #views {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #views.hidden { display: none; }
+
+    /* ── Slider mode ── */
+    #view-slider {
+      flex: 1;
+      overflow: hidden;
+    }
+    #view-slider.hidden { display: none; }
+
+    .slider-wrap {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+      cursor: ew-resize;
+      background: #111;
+      user-select: none;
+    }
+
+    .img-layer {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 20px;
+    }
+
+    .img-layer img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+      pointer-events: none;
+    }
+
+    #layer-after {
+      clip-path: inset(0 0 0 100%);
+    }
+
+    .divider {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 100%;
+      width: 2px;
+      background: #fff;
+      transform: translateX(-50%);
+      pointer-events: none;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
+    }
+
+    .handle {
+      position: absolute;
+      top: 50%;
+      left: 100%;
+      transform: translate(-50%, -50%);
+      width: 44px;
+      height: 44px;
+      background: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    }
+    .handle svg { width: 22px; height: 22px; color: #333; }
+
+    /* ── Corner tags (slider mode) ── */
+    .tag {
+      position: absolute;
+      top: 14px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 6px;
+      letter-spacing: 0.4px;
+      pointer-events: none;
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      transition: opacity 0.25s ease;
+    }
+    .tag-before {
+      left: 14px;
+      background: rgba(248,123,90,0.15);
+      color: #f87b5a;
+      border: 1px solid rgba(248,123,90,0.3);
+    }
+    .tag-after {
+      right: 14px;
+      background: rgba(90,180,248,0.15);
+      color: #5ab4f8;
+      border: 1px solid rgba(90,180,248,0.3);
+      opacity: 0;
+    }
+
+    /* ── Split mode ── */
+    #view-split {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      gap: 1px;
+      background: #3a3a3a;
+    }
+    #view-split.hidden { display: none; }
+
+    .split-pane {
+      flex: 1;
+      background: #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      padding: 24px 16px;
+    }
+
+    .split-pane img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .split-label {
+      position: absolute;
+      top: 14px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 6px;
+      letter-spacing: 0.4px;
+      white-space: nowrap;
+      pointer-events: none;
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .split-label-before {
+      left: 14px;
+      background: rgba(248,123,90,0.15);
+      color: #f87b5a;
+      border: 1px solid rgba(248,123,90,0.3);
+    }
+    .split-label-after {
+      right: 14px;
+      background: rgba(90,180,248,0.15);
+      color: #5ab4f8;
+      border: 1px solid rgba(90,180,248,0.3);
+    }
+  </style>
+</head>
+<body>
+
+<!-- Toolbar: mode switcher -->
+<div class="toolbar hidden" id="toolbar">
+  <div class="mode-switcher">
+
+    <button class="mode-btn active" id="btnSlider" title="Slider view">
+      <svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1" y="1" width="18" height="14" rx="2"/>
+        <line x1="10" y1="1" x2="10" y2="15"/>
+        <polyline points="7,6 5,8 7,10"/>
+        <polyline points="13,6 15,8 13,10"/>
+      </svg>
+      Slider
+    </button>
+
+    <button class="mode-btn" id="btnSplit" title="Split view">
+      <svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1" y="1" width="8" height="14" rx="2"/>
+        <rect x="11" y="1" width="8" height="14" rx="2"/>
+      </svg>
+      Split
+    </button>
+
+  </div>
+</div>
+
+<!-- Loading -->
+<div class="state" id="stateLoading">
+  <div class="state-icon">⏳</div>
+  <h2>Exporting frames…</h2>
+  <p>Hang tight, this only takes a second.</p>
+</div>
+
+<!-- Error -->
+<div class="state error hidden" id="stateError">
+  <div class="state-icon">⚠️</div>
+  <h2>Something went wrong</h2>
+  <p id="errorMsg"></p>
+  <div class="hint">
+    <strong>How to use this plugin:</strong><br/>
+    1. Click your <strong>Before</strong> frame in Figma<br/>
+    2. Hold <strong>Shift</strong> and click your <strong>After</strong> frame<br/>
+    3. Run the plugin again
+  </div>
+</div>
+
+<!-- Views -->
+<div id="views" class="hidden">
+
+  <!-- Slider mode -->
+  <div id="view-slider">
+    <div class="slider-wrap" id="sliderWrap">
+
+      <div class="img-layer" id="layer-before">
+        <img id="imgBefore" src="" alt="Before" />
+      </div>
+
+      <div class="img-layer" id="layer-after">
+        <img id="imgAfter" src="" alt="After" />
+      </div>
+
+      <div class="divider" id="divider"></div>
+
+      <div class="handle" id="handle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+          <polyline points="10 7 5 12 10 17"></polyline>
+          <polyline points="14 7 19 12 14 17"></polyline>
+        </svg>
+      </div>
+
+      <div class="tag tag-before" id="tagBefore">Before</div>
+      <div class="tag tag-after"  id="tagAfter">After</div>
+
+    </div>
+  </div>
+
+  <!-- Split mode -->
+  <div id="view-split" class="hidden">
+
+    <div class="split-pane">
+      <img id="splitImgBefore" src="" alt="Before" />
+      <div class="split-label split-label-before" id="splitLabelBefore">Before</div>
+    </div>
+
+    <div class="split-pane">
+      <img id="splitImgAfter" src="" alt="After" />
+      <div class="split-label split-label-after" id="splitLabelAfter">After</div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+  var pos = 100;
+  var dragging = false;
+  var currentMode = "slider";
+
+  var sliderWrap = document.getElementById("sliderWrap");
+  var layerAfter = document.getElementById("layer-after");
+  var divider    = document.getElementById("divider");
+  var handle     = document.getElementById("handle");
+  var tagBefore  = document.getElementById("tagBefore");
+  var tagAfter   = document.getElementById("tagAfter");
+
+  function setPos(pct) {
+    pos = Math.max(0, Math.min(100, pct));
+    layerAfter.style.clipPath = "inset(0 0 0 " + pos + "%)";
+    divider.style.left = pos + "%";
+    handle.style.left  = pos + "%";
+    tagBefore.style.opacity = Math.min(1, Math.max(0, (pos - 5) / 15));
+    tagAfter.style.opacity  = Math.min(1, Math.max(0, (95 - pos) / 15));
+  }
+
+  function posFromEvent(e) {
+    var rect = sliderWrap.getBoundingClientRect();
+    return ((e.clientX - rect.left) / rect.width) * 100;
+  }
+
+  sliderWrap.addEventListener("mousedown", function(e) { dragging = true; setPos(posFromEvent(e)); });
+  window.addEventListener("mousemove",  function(e) { if (dragging) setPos(posFromEvent(e)); });
+  window.addEventListener("mouseup",    function()  { dragging = false; });
+
+  // Mode switching
+  document.getElementById("btnSlider").addEventListener("click", function() {
+    if (currentMode === "slider") return;
+    currentMode = "slider";
+    document.getElementById("btnSlider").classList.add("active");
+    document.getElementById("btnSplit").classList.remove("active");
+    document.getElementById("view-slider").classList.remove("hidden");
+    document.getElementById("view-split").classList.add("hidden");
+  });
+
+  document.getElementById("btnSplit").addEventListener("click", function() {
+    if (currentMode === "split") return;
+    currentMode = "split";
+    document.getElementById("btnSplit").classList.add("active");
+    document.getElementById("btnSlider").classList.remove("active");
+    document.getElementById("view-split").classList.remove("hidden");
+    document.getElementById("view-slider").classList.add("hidden");
+  });
+
+  window.onmessage = function(event) {
+    var msg = event.data.pluginMessage;
+    if (!msg) return;
+
+    if (msg.type === "images") {
+      var beforeURL = URL.createObjectURL(new Blob([new Uint8Array(msg.before)], { type: "image/png" }));
+      var afterURL  = URL.createObjectURL(new Blob([new Uint8Array(msg.after)],  { type: "image/png" }));
+
+      document.getElementById("imgBefore").src      = beforeURL;
+      document.getElementById("imgAfter").src       = afterURL;
+      document.getElementById("splitImgBefore").src = beforeURL;
+      document.getElementById("splitImgAfter").src  = afterURL;
+
+      document.getElementById("tagBefore").textContent       = msg.beforeName;
+      document.getElementById("tagAfter").textContent        = msg.afterName;
+      document.getElementById("splitLabelBefore").textContent = msg.beforeName;
+      document.getElementById("splitLabelAfter").textContent  = msg.afterName;
+
+      document.getElementById("stateLoading").classList.add("hidden");
+      document.getElementById("stateError").classList.add("hidden");
+      document.getElementById("toolbar").classList.remove("hidden");
+      document.getElementById("views").classList.remove("hidden");
+
+      setPos(100);
+    }
+
+    if (msg.type === "error") {
+      document.getElementById("errorMsg").textContent = msg.message;
+      document.getElementById("stateLoading").classList.add("hidden");
+      document.getElementById("stateError").classList.remove("hidden");
+    }
+  };
+</script>
+
+</body>
+</html>
