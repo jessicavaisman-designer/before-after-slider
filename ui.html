@@ -24,8 +24,45 @@
       background: #2c2c2c;
       border-bottom: 1px solid #3a3a3a;
       flex-shrink: 0;
+      position: relative;
     }
     .toolbar.hidden { display: none; }
+
+    .fullscreen-btn {
+      position: absolute;
+      right: 10px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #555;
+      padding: 6px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s, background 0.15s;
+    }
+    .fullscreen-btn:hover { color: #f0f0f0; background: #3a3a3a; }
+    .fullscreen-btn svg { width: 16px; height: 16px; }
+
+    /* ── Resize handle ── */
+    #resizeHandle {
+      position: fixed;
+      bottom: 0;
+      right: 0;
+      width: 18px;
+      height: 18px;
+      cursor: nwse-resize;
+      z-index: 200;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+      padding: 3px;
+      opacity: 0.35;
+      transition: opacity 0.15s;
+    }
+    #resizeHandle:hover { opacity: 0.8; }
+    #resizeHandle svg { width: 12px; height: 12px; }
 
     .mode-switcher {
       display: flex;
@@ -271,6 +308,33 @@
     </button>
 
   </div>
+
+  <button class="fullscreen-btn" id="btnFullscreen" title="Toggle fullscreen">
+    <svg id="iconExpand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 3 21 3 21 9"/>
+      <polyline points="9 21 3 21 3 15"/>
+      <line x1="21" y1="3" x2="14" y2="10"/>
+      <line x1="3" y1="21" x2="10" y2="14"/>
+    </svg>
+    <svg id="iconCompress" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+      <polyline points="4 14 10 14 10 20"/>
+      <polyline points="20 10 14 10 14 4"/>
+      <line x1="10" y1="14" x2="3" y2="21"/>
+      <line x1="21" y1="3" x2="14" y2="10"/>
+    </svg>
+  </button>
+</div>
+
+<!-- Resize handle -->
+<div id="resizeHandle" title="Drag to resize">
+  <svg viewBox="0 0 12 12" fill="none">
+    <circle cx="10" cy="10" r="1.2" fill="currentColor"/>
+    <circle cx="6"  cy="10" r="1.2" fill="currentColor"/>
+    <circle cx="10" cy="6"  r="1.2" fill="currentColor"/>
+    <circle cx="2"  cy="10" r="1.2" fill="currentColor"/>
+    <circle cx="6"  cy="6"  r="1.2" fill="currentColor"/>
+    <circle cx="10" cy="2"  r="1.2" fill="currentColor"/>
+  </svg>
 </div>
 
 <!-- Loading -->
@@ -389,6 +453,48 @@
     document.getElementById("view-split").classList.remove("hidden");
     document.getElementById("view-slider").classList.add("hidden");
   });
+
+  // ── Fullscreen toggle ──
+  var isFullscreen = false;
+  var preFullW, preFullH;
+  var FULL_W = 1400, FULL_H = 900;
+
+  document.getElementById("btnFullscreen").addEventListener("click", function() {
+    if (!isFullscreen) {
+      preFullW = window.innerWidth;
+      preFullH = window.innerHeight;
+      isFullscreen = true;
+      parent.postMessage({ pluginMessage: { type: "resize", width: FULL_W, height: FULL_H } }, "*");
+    } else {
+      isFullscreen = false;
+      parent.postMessage({ pluginMessage: { type: "resize", width: preFullW, height: preFullH } }, "*");
+    }
+    document.getElementById("iconExpand").style.display   = isFullscreen ? "none"  : "";
+    document.getElementById("iconCompress").style.display = isFullscreen ? ""      : "none";
+  });
+
+  // ── Resize handle ──
+  var resizeHandle = document.getElementById("resizeHandle");
+  var isResizing = false;
+  var resizeStartX, resizeStartY, resizeStartW, resizeStartH;
+
+  resizeHandle.addEventListener("mousedown", function(e) {
+    isResizing = true;
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    resizeStartW = window.innerWidth;
+    resizeStartH = window.innerHeight;
+    e.preventDefault();
+  });
+
+  window.addEventListener("mousemove", function(e) {
+    if (!isResizing) return;
+    var newW = Math.max(400, resizeStartW + (e.clientX - resizeStartX));
+    var newH = Math.max(300, resizeStartH + (e.clientY - resizeStartY));
+    parent.postMessage({ pluginMessage: { type: "resize", width: Math.round(newW), height: Math.round(newH) } }, "*");
+  });
+
+  window.addEventListener("mouseup", function() { isResizing = false; });
 
   window.onmessage = function(event) {
     var msg = event.data.pluginMessage;

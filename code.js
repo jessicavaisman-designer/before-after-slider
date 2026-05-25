@@ -41,4 +41,5 @@ run();
 figma.ui.onmessage = (msg) => {
   if (msg.type === "close") figma.closePlugin();
   if (msg.type === "reload") run();
+  if (msg.type === "resize") figma.ui.resize(msg.width, msg.height);
 };
