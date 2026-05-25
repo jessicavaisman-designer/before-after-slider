@@ -227,6 +227,25 @@
       opacity: 0;
     }
 
+    /* ── Lock button ── */
+    .lock-btn {
+      position: absolute;
+      left: 10px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #555;
+      padding: 6px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s, background 0.15s;
+    }
+    .lock-btn:hover { color: #f0f0f0; background: #3a3a3a; }
+    .lock-btn svg { width: 16px; height: 16px; }
+    .lock-btn.locked { color: #5ab4f8; }
+
     /* ── Split mode ── */
     #view-split {
       flex: 1;
@@ -240,19 +259,30 @@
     .split-pane {
       flex: 1;
       background: #111;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .zoom-layer {
+      position: absolute;
+      inset: 52px 16px 24px;
       display: flex;
       align-items: center;
       justify-content: center;
-      position: relative;
-      overflow: hidden;
-      padding: 52px 16px 24px;
+      transform-origin: 0 0;
+      will-change: transform;
+      cursor: grab;
+      user-select: none;
     }
+    .zoom-layer.panning { cursor: grabbing; }
 
-    .split-pane img {
+    .zoom-layer img {
       max-width: 100%;
       max-height: 100%;
       object-fit: contain;
       display: block;
+      pointer-events: none;
+      user-select: none;
     }
 
     .split-label {
@@ -308,6 +338,17 @@
     </button>
 
   </div>
+
+  <button class="lock-btn" id="btnLock" title="Lock panes together" style="display:none">
+    <svg id="iconUnlocked" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2"/>
+      <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+    </svg>
+    <svg id="iconLocked" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+      <rect x="3" y="11" width="18" height="11" rx="2"/>
+      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+  </button>
 
   <button class="fullscreen-btn" id="btnFullscreen" title="Toggle fullscreen">
     <svg id="iconExpand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -392,12 +433,16 @@
   <div id="view-split" class="hidden">
 
     <div class="split-pane">
-      <img id="splitImgBefore" src="" alt="Before" />
+      <div class="zoom-layer" id="zoomLeft">
+        <img id="splitImgBefore" src="" alt="Before" />
+      </div>
       <div class="split-label split-label-before" id="splitLabelBefore">Before</div>
     </div>
 
     <div class="split-pane">
-      <img id="splitImgAfter" src="" alt="After" />
+      <div class="zoom-layer" id="zoomRight">
+        <img id="splitImgAfter" src="" alt="After" />
+      </div>
       <div class="split-label split-label-after" id="splitLabelAfter">After</div>
     </div>
 
@@ -452,6 +497,102 @@
     document.getElementById("btnSlider").classList.remove("active");
     document.getElementById("view-split").classList.remove("hidden");
     document.getElementById("view-slider").classList.add("hidden");
+  });
+
+  // ── Zoom / Pan (split view) ──
+  var zoomLeft  = document.getElementById("zoomLeft");
+  var zoomRight = document.getElementById("zoomRight");
+  var stateLeft  = { s: 1, tx: 0, ty: 0 };
+  var stateRight = { s: 1, tx: 0, ty: 0 };
+  var lastActive = "left";
+  var locked = false;
+  var MIN_S = 1, MAX_S = 10;
+
+  function applyTransform(el, st) {
+    el.style.transform = "translate(" + st.tx + "px," + st.ty + "px) scale(" + st.s + ")";
+  }
+  function copyState(from, to) { to.s = from.s; to.tx = from.tx; to.ty = from.ty; }
+  function resetZoom(st) { st.s = 1; st.tx = 0; st.ty = 0; }
+
+  function makeWheelHandler(el, st, otherEl, otherSt) {
+    return function(e) {
+      e.preventDefault();
+      lastActive = el === zoomLeft ? "left" : "right";
+      var rect = el.getBoundingClientRect();
+      var cx = e.clientX - rect.left;
+      var cy = e.clientY - rect.top;
+      var factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      var newS = Math.max(MIN_S, Math.min(MAX_S, st.s * factor));
+      var ratio = newS / st.s;
+      st.tx = cx - ratio * (cx - st.tx);
+      st.ty = cy - ratio * (cy - st.ty);
+      st.s = newS;
+      applyTransform(el, st);
+      if (locked) { copyState(st, otherSt); applyTransform(otherEl, otherSt); }
+    };
+  }
+
+  zoomLeft.addEventListener("wheel",  makeWheelHandler(zoomLeft,  stateLeft,  zoomRight, stateRight), { passive: false });
+  zoomRight.addEventListener("wheel", makeWheelHandler(zoomRight, stateRight, zoomLeft,  stateLeft),  { passive: false });
+
+  var isPanning = false, panEl, panSt, panOtherEl, panOtherSt;
+  var panStartX, panStartY, panStartTX, panStartTY;
+
+  function makePanStart(el, st, otherEl, otherSt) {
+    return function(e) {
+      if (e.button !== 0) return;
+      isPanning = true;
+      panEl = el; panSt = st; panOtherEl = otherEl; panOtherSt = otherSt;
+      panStartX = e.clientX; panStartY = e.clientY;
+      panStartTX = st.tx;    panStartTY = st.ty;
+      el.classList.add("panning");
+      lastActive = el === zoomLeft ? "left" : "right";
+      e.preventDefault();
+    };
+  }
+
+  zoomLeft.addEventListener("mousedown",  makePanStart(zoomLeft,  stateLeft,  zoomRight, stateRight));
+  zoomRight.addEventListener("mousedown", makePanStart(zoomRight, stateRight, zoomLeft,  stateLeft));
+
+  window.addEventListener("mousemove", function(e) {
+    if (!isPanning) return;
+    panSt.tx = panStartTX + (e.clientX - panStartX);
+    panSt.ty = panStartTY + (e.clientY - panStartY);
+    applyTransform(panEl, panSt);
+    if (locked) { copyState(panSt, panOtherSt); applyTransform(panOtherEl, panOtherSt); }
+  });
+
+  window.addEventListener("mouseup", function() {
+    if (isPanning) { panEl.classList.remove("panning"); isPanning = false; }
+  });
+
+  zoomLeft.addEventListener("dblclick", function() {
+    resetZoom(stateLeft); applyTransform(zoomLeft, stateLeft);
+    if (locked) { resetZoom(stateRight); applyTransform(zoomRight, stateRight); }
+  });
+  zoomRight.addEventListener("dblclick", function() {
+    resetZoom(stateRight); applyTransform(zoomRight, stateRight);
+    if (locked) { resetZoom(stateLeft); applyTransform(zoomLeft, stateLeft); }
+  });
+
+  // ── Lock toggle ──
+  document.getElementById("btnLock").addEventListener("click", function() {
+    locked = !locked;
+    this.classList.toggle("locked", locked);
+    document.getElementById("iconUnlocked").style.display = locked ? "none" : "";
+    document.getElementById("iconLocked").style.display   = locked ? "" : "none";
+    this.title = locked ? "Unlock panes" : "Lock panes together";
+    if (locked) {
+      if (lastActive === "left") { copyState(stateLeft, stateRight); applyTransform(zoomRight, stateRight); }
+      else                       { copyState(stateRight, stateLeft); applyTransform(zoomLeft,  stateLeft); }
+    }
+  });
+
+  document.getElementById("btnSlider").addEventListener("click", function() {
+    document.getElementById("btnLock").style.display = "none";
+  });
+  document.getElementById("btnSplit").addEventListener("click", function() {
+    document.getElementById("btnLock").style.display = "";
   });
 
   // ── Fullscreen toggle ──
@@ -520,6 +661,8 @@
       document.getElementById("views").classList.remove("hidden");
 
       setPos(100);
+      resetZoom(stateLeft);  applyTransform(zoomLeft,  stateLeft);
+      resetZoom(stateRight); applyTransform(zoomRight, stateRight);
     }
 
     if (msg.type === "error") {
